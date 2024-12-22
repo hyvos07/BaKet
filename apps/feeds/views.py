@@ -365,13 +365,11 @@ def create_post_mobile(request):
         )
         
         if 'image' in data:
-            image_data = base64.b64decode(data['image'])
-            image_file = ContentFile(image_data, name=str(uuid.uuid4()))
-            
-            new_post.image = image_file
+            new_post.image = convert_image(data['image'])
 
         new_post.save()
-    except:
+    except Exception as e:
+        print(e)
         return JsonResponse({"status": "Failed to add post"}, status=400)
 
     return JsonResponse({"status": "Successfully added post"}, status=200)
@@ -392,8 +390,19 @@ def edit_post_mobile(request, id):
         
         data = json.loads(request.body)
         post.content = data['content']
+
+        if 'image' in data:
+            if post.image:
+                post.image.delete(save=False)
+            
+            if data['image'] == 'null':
+                post.image = None
+            else:
+                post.image = convert_image(data['image'])
+        
         post.save()
-    except:
+    except Exception as e:
+        print(e)
         return JsonResponse({"status": "Failed to update post"}, status=400)
 
     return JsonResponse({"status": "Successfully updated post"}, status=200)
@@ -414,6 +423,9 @@ def delete_post_mobile(request, id):
     
     if request.user != post.user:
         return JsonResponse({"status": "Wrong user"}, status=401)
+    
+    if post.image:
+        post.image.delete(save=False)
 
     post.delete()
 
@@ -504,13 +516,12 @@ def create_reply_mobile(request):
 @csrf_exempt
 @api_view(['POST'])
 @authentication_classes([CsrfExemptSessionAuthentication])
-def delete_reply_mobile(request):
+def delete_reply_mobile(request, reply_id):
     if not request.user.is_authenticated:
         return JsonResponse({"status": "User not authenticated"}, status=401)
     
     try:
-        data = json.loads(request.body)
-        reply = Reply.objects.get(pk=data['reply_id'])
+        reply = Reply.objects.get(pk=reply_id)
         
         if not reply:
             return JsonResponse({"status": "Reply not found"}, status=404)
@@ -673,3 +684,16 @@ def api_reply_json(request, post_id):
     serializers = ReplySerializer(result_page, many=True)
     
     return paginator.get_paginated_response(serializers.data)
+
+
+
+
+# Helper Method
+
+def convert_image(image):
+    image_ext = image[-4:]
+    if image_ext == 'jpeg': image_ext = '.jpeg'
+    image_data = base64.b64decode(image[:-len(image_ext)])
+    image_file = ContentFile(image_data, name=(str(uuid.uuid4()) + image_ext))
+    
+    return image_file
